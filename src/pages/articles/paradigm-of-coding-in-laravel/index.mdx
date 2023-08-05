@@ -1,0 +1,1165 @@
+import {ArticleLayout} from '@/components/ArticleLayout'
+
+export const meta = {
+    author: 'Yevhenii Kymryzy',
+    date: '2023-08-05',
+    title: 'Paradigm of coding in Laravel',
+    description:
+        'This article explains how Laravel enables implementing Domain-Driven Design principles through its Eloquent ORM models, repositories, services, value objects, and domain events.',
+}
+
+export default (props) => <ArticleLayout meta={meta} {...props} />
+
+Laravel is a powerful PHP framework that allows you to build a large-scale web application.
+But many developers don't know how to make a good architecture for their application.
+In this article, I will explain my vision of the architecture of the Laravel application.
+
+My opinion is based on different articles and books that I read.
+I analyzed many different approaches and chose the best for me.
+Mainly I was inspired by the book Laravel Beyond CRUD by spatie, I recommend reading it,
+Domain Driven Design by Martin Joo, and Container-Ship approach.
+
+I will describe my opinion and show different parts of the application should be implemented,
+different parts of the application, and their sense. As for example, I will show you the REST API application.
+
+## Domain Driven Design
+
+Domain Driven Design is a software development approach that focuses on the domain.
+The main idea of this approach is to separate the domain from the infrastructure.
+It helps you to make your application more flexible and scalable.
+Also, it helps you to reuse the domain logic in different applications.
+Let's look at the folder structure which I use in my projects:
+
+
+In `Support` folder I put all the logic that is not related to the domain. But it is related to the application.
+For example, I put here helpers, interfaces, traits, and other things which I use globally.
+
+```
+📦 .github
+📦 app
+ ┣ 📦 Console
+ ┣ 📦 Exeptions
+ ┣ 📦 Http
+ ┣ 📦 Jobs
+ ┣ 📦 Providers
+ ┣ 📦 Rules
+ ┣ 🌟 Support
+    ┣ 📦 Helpers
+    ┣ 📦 Interfaces
+    ┣ 📦 Parents
+    ┣ 📦 SDK
+    ┗ 📦 Traits
+📦 bootstrap
+📦 config
+📦 database
+📦 domain
+📦 lang
+📦 public
+📦 routes
+📦 storage
+📦 tests
+📦 vendor
+```
+
+Let's look at the `domain` folder. It is the main folder of the application.
+Here I put all the logic related to the domains. I will describe it in more detail later.
+
+```
+📦 domain
+ ┣ 📦 User
+ ┣ 📦 Deal
+ ┣ 📦 Project
+ ┣ 📦 Product
+ ┣ 📦 Category
+ ┣ 📦 Shipment
+ ┣ 📦 Displacement
+ ┣ 📦 Shipping
+ ┗ 📦 Invoice
+```
+
+In each domain folder, I put only the logic related to this domain.
+Let's look at the `Project` domain folder:
+
+```
+📦 Project
+ ┣ 📦 Actions
+ ┣ 📦 Broadcasting
+ ┣ 📦 Controllers
+ ┣ 📦 DTO
+ ┣ 📦 Enums
+ ┣ 📦 Events
+ ┣ 📦 Listeners
+ ┣ 📦 Models
+ ┣ 📦 Notifications
+ ┣ 📦 Observers
+ ┣ 📦 Policies
+ ┣ 📦 Query
+ ┣ 📦 Requests
+ ┗ 📦 Resources
+```
+
+You don't need to create all these folders if you haven't Events, don't create `Events` folder,
+but in my case, I use all these folders, because I have a lot of logic in this domain.
+All these things in these folders I try to explain in this article.
+
+
+
+## Routing
+
+I advise you to put your routes files in this structure, it helps you to manage you versions:
+
+```
+📦 routes
+ ┗ 📂 api
+   ┗ 📂 v1
+     ┣ 📜 private.php
+     ┗ 📜 public.php
+ ┣ 📜 channels.php
+ ┣ 📜 console.php
+ ┗ 📜 web.php
+```
+
+Also in the route file, try grouping the files and using `prefix` by domain.
+I can't fill in the method name as I use the `__invoke` method in my controllers.
+`Can` method is a method of policy, it helps you to check the user's permissions and other things.
+Instead of `id` you can use model's name, because Laravel will automatically find the model by `id`:
+
+```php
+Route::group(['prefix' => '/deal-product-addresses'], function () {
+    Route::get(
+        uri: '/{dealProductAddress}/shipments/available/load/select',
+        action: \Domain\Deal\Controllers\GetAvailableToLoadDealProductAddressShipmentsController::class
+    )->can('availableToLoad', 'dealProductAddress');
+    Route::get(
+        uri: '/{dealProductAddress}/shipments/available/unload/select',
+        action: \Domain\Deal\Controllers\GetAvailableToUnloadDealProductAddressShipmentsController::class
+    )->can('availableToUnload', 'dealProductAddress');
+    Route::post(
+        uri: '/{dealProductAddress}/shipment',
+        action: \Domain\Shipment\Controllers\CreateShipmentFromDealProductAddressController::class
+    )->can('createShipment', 'dealProductAddress');
+});
+```
+
+## Policies
+
+It is a good practice to use policies for checking permissions.
+It helps you to separate the logic of checking permissions from the controller.
+Also, it helps you to reuse the logic of checking permissions.
+Some examples of policy function:
+
+```php
+public function load(User $user, Displacement $displacement): bool
+{
+    return $user->permission(PermissionEnum::DISPLACEMENT_LOAD)
+        && $displacement->deal->customer_id == $user->customer_id
+        && ! $displacement->is_unloading
+        && $displacement->status::class == Pending::class
+        && $displacement->shipping_id != null
+        && $displacement->shipping->status::class == \Domain\Shipping\States\Pending::class
+        && $displacement->nextToProcess();
+}
+
+// ...
+
+public function createProject(User $user, Deal $deal): bool
+{
+    return $deal->status::class == Pending::class
+        && $user->permission(PermissionEnum::PROJECT_CREATE)
+        && (
+        ($deal->is_selling && ! $deal->isInProject())
+        || (! $deal->is_selling)
+        )
+        && $deal->checkAccess($user);
+}
+
+// ...
+
+public function find(User $user, Project $project): bool
+{
+    return $project->customer->id == $user->customer->id
+        && ($project->checkAccess($user) || $user->permission(PermissionEnum::PROJECT_GET_ALL->value));
+}
+```
+
+## Controllers
+
+I advise you to use the `__invoke` method in your controllers.
+It helps you to separate the logic of the controller from the routing.
+Also, it helps you to reuse the logic of the controller.
+In my big projects, I put in the controller only these things:
+request, data transfer object, action, and recourse (in case of REST API).
+Some examples of controllers:
+
+```php
+class CreateProjectForDealController extends ParentController
+{
+    public function __construct(
+        private readonly CreateProjectAction $createProjectAction,
+        private readonly AttachProjectToDealAction $attachProjectToDealAction,
+        private readonly NotifyInviteesToProjectAction $notifyInviteesToProjectAction,
+    ) {
+    }
+
+    /**
+     * @throws \Exception
+     */
+    public function __invoke(ManageProjectRequest $request, Deal $deal): JsonResponse
+    {
+        try {
+
+            $data = ManageProjectData::fromRequest($request);
+
+            $projectData = CreateProjectData::fromAction(
+                null,
+                $data->seller_id,
+                $data->buyer_id,
+                $data->logistician_id,
+                $data->admin_id
+            );
+
+            $project = ($this->createProjectAction)($projectData);
+
+            ($this->attachProjectToDealAction)($project, $deal);
+
+            ($this->notifyInviteesToProjectAction)($data, $project);
+
+            return $this->created(true);
+        } catch (\Exception $e) {
+            return $this->error();
+        }
+    }
+}
+
+```
+
+```php
+class SelectCounterpartyAddressesController extends ParentController
+{
+    public function __construct(
+        private readonly SelectCounterpartyAddressesAction $getAllCounterpartyAddressesAction
+    ) {
+    }
+
+    public function __invoke(GetCounterpartiesRequest $request, Counterparty $counterparty): JsonResponse
+    {
+        $models = ($this->getAllCounterpartyAddressesAction)($counterparty);
+
+        return $this->success(SelectAddressResource::collection($models));
+    }
+}
+
+```
+
+In these policy methods, tou can see that I have many conditions.
+And you can ask me; how I show to the user what is wrong?
+For example, that we have button "Create project" on the frontend.
+And when the user clicks on this button, we send a request to the backend, and this policy method will be called.
+We need to watch that this button is not active if the user doesn't have all permissions and statuses or if the deal is not in the correct state.
+For example, if the status is not pending, we make this button disabled. So you can ask me; why we need to check this in the policy method, if we already check this on the frontend?
+And the answer is simple, because the user can send a request to the backend without clicking on the button, for example, using Postman.
+
+
+## Requests
+
+Requests are a good place to validate your data.
+I advise you don't validate your data in the controller.
+Also, it helps you to reuse the logic of validation.
+Some examples of request's rules:
+
+```php
+public function rules(): array
+{
+    return [
+        'displacements_ids' => [
+            'required',
+            'array',
+        ],
+        'displacements_ids.*' => [
+            'required',
+            'integer',
+            'distinct',
+            new DisplacementForShippingRule(),
+        ],
+        'counterparty_id' => [
+            'required',
+            'integer',
+            Rule::exists('counterparties', 'id')->where(function ($query) {
+                return $query->where('customer_id', $this->user()->customer->id);
+            }),
+        ],
+        'entity_id' => [
+            'required',
+            'integer',
+            Rule::exists('entities', 'id')->where(function ($query) {
+                return $query->where('customer_id', $this->user()->customer->id);
+            }),
+        ],
+        'price' => [
+            'required',
+            'numeric',
+            'min:0',
+        ],
+        'is_fixed_price' => [
+            'required',
+            'boolean',
+        ],
+        'total_sum' => [
+            'required',
+            'numeric',
+            'min:0',
+        ],
+        'is_recount' => [
+            'required',
+            'boolean',
+        ],
+        'vat_id' => [
+            'required',
+            'integer',
+            Rule::exists('vats', 'id'),
+        ],
+        'currency_id' => [
+            'required',
+            'integer',
+            Rule::exists('currencies', 'id'),
+        ],
+        'payment_type_id' => [
+            'required',
+            'integer',
+            Rule::exists('payment_types', 'id'),
+        ],
+        'type' => [
+            'required',
+            'string',
+            Rule::in(['vehicular']),
+        ],
+        'description' => [
+            'nullable',
+            'string',
+        ],
+        'truck_transport_id' => [
+            'required',
+            'integer',
+            Rule::exists('transport', 'id'),
+        ],
+        'trailer_transport_id' => [
+            'nullable',
+            'integer',
+            Rule::exists('transport', 'id'),
+        ],
+        'driver_id' => [
+            'required',
+            'integer',
+            Rule::exists('contacts', 'id'),
+        ],
+        'invoice_deadline_at' => [
+            'nullable',
+            'date',
+            'date_format:Y-m-d',
+        ],
+        'invoice_file_group_id' => [
+            'required',
+            'integer',
+            'distinct',
+            Rule::exists('file_groups', 'id')->where(function ($query) {
+                return $query->where('customer_id', $this->user()->customer->id);
+            }),
+        ],
+        'payments.*.file_group_id' => [
+            'required',
+            'integer',
+            'distinct',
+            Rule::exists('file_groups', 'id')->where(function ($query) {
+                return $query->where('customer_id', $this->user()->customer->id);
+            }),
+        ],
+        'payments.*.description' => [
+            'nullable',
+        ],
+        'payments.*.deadline_at' => ['required', 'date', 'date_format:Y-m-d'],
+        'payments.*.total_sum' => [
+            'nullable',
+            'numeric',
+            'min:0',
+        ],
+
+        'users' => ['required', 'array', 'min:1'],
+        'users.*.user_id' => [
+            'required',
+            'integer',
+            'distinct',
+            Rule::exists('users', 'id')->where(function ($query) {
+                return $query->where('customer_id', $this->user()->customer->id);
+            }),
+        ],
+        'teams_ids' => ['nullable', 'array'],
+        'teams_ids.*' => [
+            'required',
+            'integer',
+            'distinct',
+            Rule::exists('teams', 'id')->where(function ($query) {
+                return $query->where('customer_id', $this->user()->customer->id);
+            }),
+        ],
+    ];
+```
+
+Sometimes you can't validate your data with the default rules.
+You can do this before the `return` line.
+
+```php
+public function rules(): array
+{
+    if (
+        collect($this->displacements_ids)
+            ->groupBy('datetime_at')
+            ->filter(function($items) {
+                return $items->count() > 1;
+            })
+            ->keys()
+            ->count() > 0
+    ) {
+        $this->fail('There can only be one shipment per date');
+    }
+
+
+    return [
+        'displacements_ids' => [
+    // ...
+```
+
+Sometimes you need to validate logic between fields in an object of array.
+You can try to make like this (give attention to `shipments.*.amount` field):
+
+```php
+'shipments' => [
+    'required',
+    'array',
+],
+'shipments.*.shipment_id' => [
+    'required',
+    'integer',
+    Rule::exists('shipments', 'id'),
+    function ($attribute, $value, $fail) use ($dealProductAddress) {
+        if (! $this->deal->is_selling) {
+            $shipment = ($this->getShipmentsByDealAndAddressAction)($this->deal, $dealProductAddress)
+                ->find($value);
+
+            if (! $shipment) {
+                $fail('Incorrectly selected shipment');
+            }
+        } else {
+            $shipment = ($this->getAvailableToUnloadShipmentsByDealProductAddressAction)($dealProductAddress)
+                ->find($value);
+
+            if ($shipment === null) {
+                $fail('Incorrectly selected shipment');
+            }
+        }
+    },
+],
+'shipments.*.amount' => [
+    'required',
+    'numeric',
+    'min:0.01',
+    function ($attribute, $value, $fail) {
+        $index = explode('.', $attribute)[1];
+        $shipment_id = $this->input('shipments.'.$index.'.shipment_id');
+        if (! $this->deal->is_selling) {
+            $shipment = $this->deal->avalibleToLoadShipments->find($shipment_id);
+            if (! $shipment) {
+                $fail('Incorrectly selected shipment');
+
+                return;
+            }
+            if ($shipment->avaliableToLoadAmount() < $value) {
+                $fail('The shipment quantity cannot exceed the quantity in the batch');
+            }
+
+        } else {
+            $shipment = Shipment::find($shipment_id);
+
+            if (! $shipment) {
+                $fail('Incorrectly selected shipment');
+
+                return;
+            }
+
+            if ($shipment->estimatedBusyVolume() < $value) {
+                $fail('The shipment quantity cannot exceed the quantity in the batch');
+            }
+        }
+    },
+],
+```
+
+## Data transfer objects
+
+PHP is not a typed language, but you can use data transfer objects to make your code more readable and understandable,
+make your fields required or not, and give them strict types.
+
+```php
+class CreateInvoiceFromDealData extends Data
+{
+    public function __construct(
+        public readonly int $vat_id,
+        public readonly int $payment_type_id,
+        public readonly float $total_sum,
+        public readonly int $invoice_category_id,
+        public readonly int $currency_id,
+        public readonly int $file_group_id,
+        public readonly bool $is_selling,
+        public readonly int $entity_id,
+        public readonly int $customer_entity_id,
+        public readonly string|null $deadline_at,
+        public readonly string|null $description,
+    ) {
+    }
+
+    public static function fromRequest(CreateInvoiceFromDealRequest $request): self
+    {
+        return new self(
+            vat_id: $request->vat_id,
+            payment_type_id: $request->payment_type_id,
+            total_sum: $request->total_sum,
+            invoice_category_id: $request->invoice_category_id,
+            currency_id: $request->currency_id,
+            file_group_id: $request->file_group_id,
+            is_selling: $request->is_selling,
+            entity_id: $request->entity_id,
+            customer_entity_id: $request->customer_entity_id,
+            deadline_at: $request->deadline_at,
+            description: $request->description,
+        );
+    }
+}
+```
+
+## Actions
+
+Actions are classes that contain business logic. They are used to separate business logic from controllers.
+Important that you have to try to make your actions as small as possible. And one action should do only one thing.
+If you need to do several things, you should create several actions and use them in one action, or create different
+functions in one action. In this case, I show you a very difficult action, but it is an exception. But in this
+action, you can see how to use other actions in one action, and separate business logic in one action.
+
+```php
+class CreateDealAction
+{
+    public function __construct(
+        private readonly AppointSupplierOnProjectAction $appointSupplierOnProjectAction
+    ) {
+    }
+
+    public function __invoke(CreateDealData $dealData): Deal
+    {
+        [$isInProject, $project] = $this->getProject($dealData);
+
+        try {
+            DB::beginTransaction();
+
+            $deal = $this->createDeal($dealData);
+
+            $products = $this->createDealProducts($dealData, $deal);
+
+            $invoices = $this->createDealInvoices($dealData, $products);
+
+            $deal->invoices()->attach(
+                $invoices->pluck('id')
+            );
+
+            $this->attachUsersToDeal($dealData, $deal);
+
+            $deal->teams()->attach($dealData->teams_ids);
+
+            if ($isInProject && $deal->is_selling) {
+                $project->client_deal_id = $deal->id;
+                $project->save();
+            } elseif ($isInProject && ! $deal->is_selling) {
+                ($this->appointSupplierOnProjectAction)($project, $deal);
+            }
+
+            DB::commit();
+
+            return $deal->refresh();
+        } catch (\Exception $e) {
+            DB::rollBack();
+            throw $e;
+        }
+    }
+
+    /**
+     * @throws \Exception
+     */
+    public function getProject(CreateDealData $dealData): array
+    {
+        $isInProject = $dealData->project_id !== null;
+        $project = null;
+
+        if ($isInProject) {
+            $project = Project::findOrFail($dealData->project_id);
+        }
+        if (! $isInProject) {
+            return [$isInProject, $project];
+        }
+        if ($project->client_deal_id === null) {
+            return [$isInProject, $project];
+        }
+        if (! $dealData->is_selling) {
+            return [$isInProject, $project];
+        }
+        throw new \Exception('Project already has a client deal');
+    }
+
+    /**
+     * @return mixed
+     */
+    public function createDeal(CreateDealData $dealData)
+    {
+        $deal = Deal::create([
+            'customer_id' => Auth::user()->customer->id,
+            'start_at' => $dealData->start_at,
+            'end_at' => $dealData->end_at,
+            'is_selling' => $dealData->is_selling,
+            'customer_entity_id' => $dealData->customer_entity_id,
+            'entity_id' => $dealData->entity_id,
+            'currency_id' => $dealData->invoice_currency_id,
+            'contract_id' => $dealData->contract_id,
+            'payment_type' => $dealData->payment_type,
+            'payment_date' => $dealData->invoice_deadline_at,
+            'payment_type_id' => $dealData->invoice_payment_type_id,
+            'condition_of_transportation' => $dealData->condition_of_transportation,
+            'amount_per_day' => $dealData->amount_per_day,
+            'amount_per_day_unit_id' => $dealData->amount_per_day_unit_id,
+            'transport_height' => $dealData->transport_height,
+            'transport_width' => $dealData->transport_width,
+            'transport_length' => $dealData->transport_length,
+            'transport_weight' => $dealData->transport_weight,
+            'description' => $dealData->description,
+            'status' => \Domain\Deal\States\Draft::class,
+        ]);
+
+        $deal->acceptableTransportCategories()->attach($dealData->acceptable_transport_categories_ids);
+        $deal->unacceptableTransportCategories()->attach($dealData->unacceptable_transport_categories_ids);
+        $deal->loadingSides()->attach($dealData->loading_sides_ids);
+        $deal->transportRequirements()->attach($dealData->transport_requirements_ids);
+
+        return $deal;
+    }
+
+    public function createDealProducts(CreateDealData $dealData, mixed $deal): \Illuminate\Support\Collection
+    {
+        $products = collect();
+
+        foreach ($dealData->products as $productData) {
+            $amount = 0;
+
+            foreach ($productData->addresses as $address) {
+                $amount += $address->amount;
+            }
+
+            $product = DealProduct::create([
+                'deal_id' => $deal->id,
+                'counterparty_product_id' => $productData->counterparty_product_id,
+                'full_product_name' => $productData->full_product_name,
+                'product_code' => $productData->product_code,
+                'unit_id' => $productData->unit_id,
+                'amount' => $amount,
+                'price' => $productData->price,
+                'vat_id' => $productData->vat_id,
+                'analysis_file_group_id' => $productData->analysis_file_group_id,
+            ]);
+
+            $product->packTypes()->attach($productData->pack_types_ids);
+            $product->variants()->attach($productData->variants_ids);
+
+            foreach ($productData->characteristics as $characteristic) {
+                DealProductCharacteristic::create([
+                    'deal_product_id' => $product->id,
+                    'product_property_id' => $characteristic->product_property_id,
+                    'value' => $characteristic->value,
+                    'unit_id' => $characteristic->unit_id,
+                ]);
+            }
+
+            foreach ($productData->addresses as $address) {
+                DealProductAddress::create([
+                    'address_id' => $address->address_id,
+                    'deal_product_id' => $product->id,
+                    'amount' => $address->amount,
+                ]);
+            }
+
+            $products->push($product);
+        }
+
+        return $products;
+    }
+
+    /**
+     * @throws \Exception
+     */
+    public function createDealInvoices(CreateDealData $dealData, \Illuminate\Support\Collection $products): \Illuminate\Support\Collection
+    {
+        $invoices = collect();
+        $invoice_status = Draft::class;
+        $invoice_category_id = GetDealInvoiceCategory::id();
+
+        foreach ($dealData->invoices as $invoiceData) {
+            $total_sum = $products
+                ->filter(fn ($product) => $product->vat_id === $invoiceData->vat_id)
+                ->reduce(function ($carry, $product) {
+                    return $carry + $product->price * $product->amount;
+                }, 0);
+
+            $invoice = Invoice::create([
+                'vat_id' => $invoiceData->vat_id,
+                'total_sum' => $total_sum,
+                'payment_type_id' => $dealData->invoice_payment_type_id,
+                'invoice_category_id' => $invoice_category_id,
+                'currency_id' => $dealData->invoice_currency_id,
+                'file_group_id' => $invoiceData->file_group_id,
+                'is_selling' => $dealData->is_selling,
+                'entity_id' => $dealData->entity_id,
+                'customer_entity_id' => $dealData->customer_entity_id,
+                'description' => $dealData->description,
+                'deadline_at' => $dealData->invoice_deadline_at,
+                'status' => $invoice_status,
+            ]);
+
+            foreach ($invoiceData->payments as $paymentData) {
+                Payment::create([
+                    'total_sum' => $paymentData->total_sum,
+                    'payment_type_id' => $dealData->invoice_payment_type_id,
+                    'vat_id' => $invoiceData->vat_id,
+                    'invoice_id' => $invoice->id,
+                    'file_group_id' => $paymentData->file_group_id,
+                    'is_selling' => $dealData->is_selling,
+                    'deadline_at' => $paymentData->deadline_at,
+                    'description' => $paymentData->description,
+                    'status' => \Domain\Payment\States\Draft::class,
+                ]);
+            }
+
+            $invoices->push($invoice);
+        }
+
+        return $invoices;
+    }
+
+    public function attachUsersToDeal(CreateDealData $dealData, mixed $deal): void
+    {
+        foreach ($dealData->users as $user) {
+            DealUser::create([
+                'deal_id' => $deal->id,
+                'user_id' => $user->user_id,
+                'is_owner' => $user->is_owner,
+                'is_browsing' => $user->is_browsing,
+                'is_editing' => $user->is_editing,
+            ]);
+        }
+    }
+}
+
+```
+
+## Observer
+
+It is a class that is responsible for the logic of the model. It is used to perform actions before and after the model is created, updated, deleted, restored, etc.
+I use it if I need to compute some data before saving the model, or if I need to perform some actions after saving the model.
+Some examples of using the observer:
+
+```php
+public function saving(Invoice $invoice): void
+{
+    $vatSums = Help::countVATSum($invoice->total_sum, $invoice->vat->amount);
+
+    $invoice->sum_exclude_vat = $vatSums['sum_exclude_vat'];
+    $invoice->vat_sum = $vatSums['vat_sum'];
+}
+
+```
+
+## Events and Listeners
+
+Events and listeners are used to perform actions after the model is created, updated, deleted, restored, etc.
+I use them if some models depend on each other, and I need to perform some actions after the model is created, updated, deleted, restored, etc.
+Some examples of using events and listeners:
+
+
+```php
+// Model
+
+protected $dispatchesEvents = [
+    'updated' => DisplacementShipmentUpdated::class
+];
+```
+
+```php
+// Event
+
+class DisplacementShipmentUpdated
+{
+    use Dispatchable;
+    use SerializesModels;
+
+    public function __construct(
+        public DisplacementShipment $displacementShipment
+    ) {
+    }
+}
+```
+
+
+```php
+// EventServiceProvider
+
+DisplacementShipmentCreated::class => [
+    DisplacementAmountRecount::class,
+]
+```
+
+
+```php
+// Listener
+
+class DisplacementAmountRecount
+{
+    public function __construct(
+        private readonly RecountAmountDisplacementAction $recountAmountDisplacementAction
+    ) {
+    }
+
+    public function handle(
+        DisplacementShipmentCreated | DisplacementShipmentUpdated | DisplacementShipmentDeleted $event
+    ): void {
+        ($this->recountAmountDisplacementAction)($event->displacementShipment->displacement);
+    }
+}
+```
+
+## Notifications
+
+I have many places in the application where I need to send notifications to users.
+For example, when some model is created, updated, deleted, restored, etc.
+And there I can to combine events and notifications.
+Some examples of using notifications:
+
+
+
+```php
+// Event
+
+class ProjectCreated
+{
+    use Dispatchable;
+    use SerializesModels;
+
+    public function __construct(
+        public Project $project
+    ) {
+    }
+}
+
+```
+
+```php
+// Listener
+
+class ProjectCreated
+{
+    public function handle(
+        \Domain\Project\Events\ProjectCreated $event
+    ): void {
+        $project = $event->project;
+
+        if ($project->admin) {
+            $project->admin->notify(
+                new AddedProjectNotification(
+                    $project,
+                    ProjectRoleEnum::admin
+                )
+            );
+        }
+
+        if ($project->seller) {
+            $project->seller->notify(
+                new AddedProjectNotification(
+                    $project,
+                    ProjectRoleEnum::seller
+                )
+            );
+        }
+
+        if ($project->buyer) {
+            $project->buyer->notify(
+                new AddedProjectNotification(
+                    $project,
+                    ProjectRoleEnum::buyer
+                )
+            );
+        }
+
+        if ($project->logistician) {
+            $project->logistician->notify(
+                new AddedProjectNotification(
+                    $project,
+                    ProjectRoleEnum::logistician
+                )
+            );
+        }
+    }
+}
+```
+
+```php
+// Notification
+
+class AddedProjectNotification extends Notification
+{
+    use Queueable;
+
+    public function __construct(
+        public \Domain\Project\Models\Project $project,
+        public \Domain\Project\Enums\ProjectRoleEnum $role
+    ) {
+    }
+
+    public function via($notifiable)
+    {
+        return ['database', 'broadcast'];
+    }
+
+    public function toArray($notifiable): array
+    {
+        return [
+            'data' => [
+                'project_id' => $this->project->id,
+                'project_code' => $this->project->code,
+                'role' => $this->role->value,
+            ],
+            'component' => 'AddedToProject',
+        ];
+    }
+}
+```
+
+## Query Builder
+
+I use the query builder to get data from the database.
+Maybe you know about a repository pattern. I don't use it. I use the query builder instead.
+Because I don't need to create a repository for each model.
+Let's look at an example of using the query builder:
+
+```php
+class DealProduct extends Model
+{
+    // ...
+
+    public function newEloquentBuilder($query): DealQueryBuilder
+    {
+        return new DealQueryBuilder($query);
+    }
+}
+```
+
+```php
+
+class DealQueryBuilder extends Builder
+{
+    public function currentCustomer(): self
+    {
+        return $this->where('customer_id', auth()->user()->customer_id);
+    }
+
+    public function currentUser(): self
+    {
+        return $this->whereHas('users', function ($query) {
+            $query->where('users.id', auth()->id());
+        });
+    }
+
+    public function period(string $start_at, string $end_at): self
+    {
+        return $this->where(fn ($query) => $query
+            ->where(fn ($query) => $query
+                ->whereDate('start_at', '<', $start_at)
+                ->whereDate('end_at', '>', $start_at))
+            ->orWhere(fn ($query) => $query
+                ->whereDate('start_at', '<', $end_at)
+                ->whereDate('end_at', '>', $end_at))
+            ->orWhere(fn ($query) => $query
+                ->whereDate('start_at', '>', $start_at)
+                ->whereDate('end_at', '<', $end_at))
+        );
+    }
+
+    public function user(User $user): self
+    {
+        return $this->whereHas('users', function ($query) use ($user) {
+            $query->where('users.id', $user->id);
+        });
+    }
+
+    public function draft(): self
+    {
+        return $this->where('status', Draft::class);
+    }
+
+    public function productIds(array $productIds): self
+    {
+        return $this->whereHas('products', function ($query) use ($productIds) {
+            $query->whereHas('counterpartyProduct', function ($query) use ($productIds) {
+                $query->whereIn('counterparty_products.product_id', $productIds);
+            });
+        });
+    }
+
+    public function buying(): self
+    {
+        return $this->where('is_selling', 0);
+    }
+
+    public function selling(): self
+    {
+        return $this->where('is_selling', 1);
+    }
+
+    public function isSelling(bool $isSelling): self
+    {
+        return $this->where('is_selling', $isSelling);
+    }
+}
+```
+
+After that, I can use the query builder like this, the main advantage of which is that I can use it anywhere in the program, rather than repeating the same code in different places:
+
+```php
+// Explore page
+return CounterpartyProduct::query()
+    ->currentCustomer()
+    ->checkAccess()
+    ->products($filters->product_ids)
+    ->counterparties($filters->counterparties_ids)
+    ->productCategories($filters->product_categories_ids)
+    ->variants($filters->product_variants_ids)
+    ->packTypes($filters->pack_types_ids)
+    ->regions($filters->regions_ids)
+    ->isSelling($filters->is_selling)
+    ->get();
+```
+
+```php
+// Get all products for the user
+return CounterpartyProduct::query()
+    ->currentCustomer()
+    ->checkAccess()
+    ->get();
+```
+
+## Model states
+
+I use the state pattern to change the status of the model.
+I find vary useful package [spatie/laravel-model-states](https://spatie.be/docs/laravel-model-states),
+using this package I can easily configure the status of the model and change it in right way.
+
+```php
+// Model
+protected $casts = [
+    'datetime_at' => 'datetime',
+    'is_unloading' => 'boolean',
+    'status' => DisplacementState::class,
+];
+
+```
+
+Let's configure the transition of the model status:
+
+```php
+// State
+
+abstract class DisplacementState extends State
+{
+    abstract public function name(): string;
+
+    /**
+     * @throws \Spatie\ModelStates\Exceptions\InvalidConfig
+     */
+    public static function config(): StateConfig
+    {
+        return parent::config()
+            ->default(Draft::class)
+            ->allowTransition(Draft::class, Pending::class)
+            ->allowTransition(Draft::class, Canceled::class)
+            ->allowTransition(Pending::class, Canceled::class)
+            ->allowTransition(Pending::class, Completed::class);
+    }
+}
+```
+
+```php
+// Example of state class
+
+class Draft extends DisplacementState
+{
+    public function name(): string
+    {
+        return 'draft';
+    }
+}
+```
+
+Example of using:
+
+```php
+
+$displacement->status->transitionTo(Pending::class);
+
+```
+
+Also, you can specify the status name in response:
+
+```php
+// Resource
+
+// ...
+'status' => $this->status->name(),
+// ...
+```
+
+## Resources
+
+I use resources to return data from the API.
+In resources, I filter data to display only the necessary fields, for each role.
+Also, you can use deep relations in resources.
+Some examples of using resources:
+
+```php
+public function toArray($request): array
+{
+    return [
+        'id' => $this->id,
+        'name' => $this->product->name.', '.
+            $this->avaliableToLoadAmount().' '.
+            $this->sourceDealProductAddress->dealProduct->unit->name.' | '.
+            $this->sourceDealProductAddress->address->locality->name.', '.
+            $this->sourceDealProductAddress->address->locality->region->name,
+    ];
+}
+
+```
+
+```php
+'suppliers_products_ids' => $this->getSuppliersProducts()->pluck('id')->toArray(),
+'clientDeal' => $this->when($this->client_deal_id, function () {
+    if (Auth::user()->permission(PermissionEnum::PROJECT_SELLER->value)) {
+        return new ClientDealForProjectListResource($this->clientDeal);
+    }
+
+    return new LimitedClientDealForProjectListResource($this->clientDeal);
+}),
+```
+
+## Conclusion
+
+In conclusion, using proper application architecture and design patterns in Laravel can greatly improve the structure and maintainability of a large, complex web application. Following principles like separation of concerns, single responsibility, and encapsulation allows for cleaner, more modular code. Leveraging Laravel's built-in functionality like routing, validation, policies, and resources helps reduce boilerplate code. And implementing patterns like repositories, services, value objects, and states provides consistency and flexibility. While it takes more planning upfront, putting thought into the architecture from the beginning pays dividends down the road in supporting new features and simplifying debugging. With the right architectural foundation, developers can focus their efforts on business logic rather than plumbing. Overall, investing in application architecture is essential for building robust, scalable web applications in Laravel.
