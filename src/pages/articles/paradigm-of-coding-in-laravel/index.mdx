@@ -35,67 +35,67 @@ In `Support` folder I put all the logic that is not related to the domain. But i
 For example, I put here helpers, interfaces, traits, and other things which I use globally.
 
 ```
-📦 .github
-📦 app
- ┣ 📦 Console
- ┣ 📦 Exeptions
- ┣ 📦 Http
- ┣ 📦 Jobs
- ┣ 📦 Providers
- ┣ 📦 Rules
+📂 .github
+📂 app
+ ┣ 📂 Console
+ ┣ 📂 Exeptions
+ ┣ 📂 Http
+ ┣ 📂 Jobs
+ ┣ 📂 Providers
+ ┣ 📂 Rules
  ┣ 🌟 Support
-    ┣ 📦 Helpers
-    ┣ 📦 Interfaces
-    ┣ 📦 Parents
-    ┣ 📦 SDK
-    ┗ 📦 Traits
-📦 bootstrap
-📦 config
-📦 database
-📦 domain
-📦 lang
-📦 public
-📦 routes
-📦 storage
-📦 tests
-📦 vendor
+    ┣ 📂 Helpers
+    ┣ 📂 Interfaces
+    ┣ 📂 Parents
+    ┣ 📂 SDK
+    ┗ 📂 Traits
+📂 bootstrap
+📂 config
+📂 database
+📂 domain
+📂 lang
+📂 public
+📂 routes
+📂 storage
+📂 tests
+📂 vendor
 ```
 
 Let's look at the `domain` folder. It is the main folder of the application.
 Here I put all the logic related to the domains. I will describe it in more detail later.
 
 ```
-📦 domain
- ┣ 📦 User
- ┣ 📦 Deal
- ┣ 📦 Project
- ┣ 📦 Product
- ┣ 📦 Category
- ┣ 📦 Shipment
- ┣ 📦 Displacement
- ┣ 📦 Shipping
- ┗ 📦 Invoice
+📂 domain
+ ┣ 📂 User
+ ┣ 📂 Deal
+ ┣ 📂 Project
+ ┣ 📂 Product
+ ┣ 📂 Category
+ ┣ 📂 Shipment
+ ┣ 📂 Displacement
+ ┣ 📂 Shipping
+ ┗ 📂 Invoice
 ```
 
 In each domain folder, I put only the logic related to this domain.
 Let's look at the `Project` domain folder:
 
 ```
-📦 Project
- ┣ 📦 Actions
- ┣ 📦 Broadcasting
- ┣ 📦 Controllers
- ┣ 📦 DTO
- ┣ 📦 Enums
- ┣ 📦 Events
- ┣ 📦 Listeners
- ┣ 📦 Models
- ┣ 📦 Notifications
- ┣ 📦 Observers
- ┣ 📦 Policies
- ┣ 📦 Query
- ┣ 📦 Requests
- ┗ 📦 Resources
+📂 Project
+ ┣ 📂 Actions
+ ┣ 📂 Broadcasting
+ ┣ 📂 Controllers
+ ┣ 📂 DTO
+ ┣ 📂 Enums
+ ┣ 📂 Events
+ ┣ 📂 Listeners
+ ┣ 📂 Models
+ ┣ 📂 Notifications
+ ┣ 📂 Observers
+ ┣ 📂 Policies
+ ┣ 📂 Query
+ ┣ 📂 Requests
+ ┗ 📂 Resources
 ```
 
 You don't need to create all these folders if you haven't Events, don't create `Events` folder,
@@ -109,7 +109,7 @@ All these things in these folders I try to explain in this article.
 I advise you to put your routes files in this structure, it helps you to manage you versions:
 
 ```
-📦 routes
+📂 routes
  ┗ 📂 api
    ┗ 📂 v1
      ┣ 📜 private.php

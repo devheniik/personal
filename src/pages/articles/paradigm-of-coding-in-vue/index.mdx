@@ -1,0 +1,1544 @@
+import {ArticleLayout} from '@/components/ArticleLayout'
+
+export const meta = {
+    author: 'Yevhenii Kymryzy',
+    date: '2023-08-05',
+    title: 'Paradigm of coding in Vue.js',
+    description:
+        'This article explains how to create big Vue.js applications with a lot of components and how to make them easy to maintain and scale.',
+}
+
+export default (props) => <ArticleLayout meta={meta} {...props} />
+
+Vue.js is a great framework for creating web applications.
+It is easy to learn and use.
+It has a lot of features that make it easy to create small and medium-sized applications.
+But when it comes to creating big applications with a lot of components,
+it becomes hard to maintain and scale. In this article,
+I will explain how to create big Vue.js applications with a lot of components and how to make them easy to maintain and scale.
+
+As an example, I will show CRM with permission management, state management, REST API, and a lot of components.
+
+## Project structure
+
+The first thing we need to do is to create a project structure.
+I like to use the following structure:
+
+```
+📂 .github
+📂 public
+📂 src
+    ┣ 📂 api
+    ┃ ┣ 📂 types
+    ┃ ┗ 📜 index.ts
+    ┣ 📂 assets
+    ┃ ┗ 📂 images
+    ┣ 📂 components
+    ┃ ┗ 📂 common
+    ┃   ┣ 📂 types
+    ┃   ┗ 📂 buttons
+    ┣ 📂 composables
+    ┣ 📂 config
+    ┣ 📂 containers
+    ┣ 📂 data
+    ┣ 📂 directives
+    ┣ 📂 functions
+    ┣ 📂 config
+    ┣ 📂 global
+    ┣ 📂 i18n
+    ┣ 📂 layouts
+    ┣ 📂 numbers
+    ┣ 📂 plugins
+    ┣ 📂 router
+    ┣ 📂 store
+    ┃ ┗ 📂 modules
+    ┣ 📂 tests
+    ┣ 📂 types
+    ┣ 📂 utils
+    ┣ 📂 validation
+    ┣ 📜 App.vue
+    ┗ 📜 main.ts
+```
+
+Let's go through each folder and see what it is for.
+
+## 📂 api
+
+This folder contains methods for working with REST API.
+Let's see how it looks like:
+
+```ts
+export default async function <T>(method: string, route: string, req: any = {}, showToast: boolean = true, customMessage: string = '', customError: string = '', passError: boolean = true) {
+  try {
+    const response = await axios[method]<Response<T>>(route, req)
+
+    return response.data
+  } catch (error) {
+    console.log(error)
+  }
+}
+```
+
+As you can see, it is a wrapper around axios. It has some additional features like showing toasts and handling errors.
+It also has a type for the response. It is very important to have types for the response.
+You can use this method when you need to make a request to the server using axios.
+
+## 📂 assets
+
+This folder contains images and other assets, css, and scss files.
+
+## 📂 components
+
+This folder contains components. In this folder, we put global components that can be used in different places in the application.
+For example, we can put here a button component that can be used in different places in the application.
+
+## 📂 composables
+
+This folder contains composables. Composables are functions that can be used in different places in the application.
+Let's see one example:
+
+```ts
+export default function <T>(_route: string, autoLoad = false) {
+  const isReady = ref<boolean>(true)
+
+  const body = ref<{
+    filters: string | string[][] | Record<string, string> | URLSearchParams;
+    data: T[];
+    meta: {
+      total: number;
+      from: number;
+      to: number | null;
+      last_page: number | null;
+      per_page: number;
+      current_page: number;
+    };
+    page: number;
+    limit: number;
+  }>({
+    filters: {},
+    data: [],
+    meta: {
+      total: 10,
+      from: 1,
+      to: null,
+      last_page: null,
+      per_page: 20,
+      current_page: 1,
+    },
+    page: 1,
+    limit: 20,
+  })
+
+  const parse = (): string => {
+    let _filters = {}
+    Object.keys(body.value.filters).forEach((key) => {
+      if (body.value.filters[key] != null && body.value.filters[key] !== '') {
+        _filters[key] = body.value.filters[key]
+      }
+    })
+    const query = new URLSearchParams(_filters).toString()
+    return `${_route}?page=${body.value.page}&limit=${body.value.limit}${query ? '&' + query : ''}`
+  }
+
+  const load = async () => {
+    isReady.value = false
+    body.value = { ...body.value, ...(await axios('get', parse())) }
+    isReady.value = true
+  }
+
+  const update = async () => {
+    body.value = { ...body.value, ...(await axios('get', parse(), null)) }
+    return body.value
+  }
+
+  onMounted(async () => {
+    if (autoLoad) {
+      await load()
+    }
+  })
+
+  return {
+    load,
+    isReady,
+    body,
+    update,
+  }
+}
+```
+
+This composable is used for working with the table. It has a method for loading data from the server.
+It also has a method for updating data. It has a method for parsing the query string.
+It has a method for getting the query string. It has a method for getting the data from the server.
+I use this composable in the table component or other views where I need to load list data from the server.
+
+If you want to learn more about composables, you can read the [official documentation](https://vuejs.org/guide/reusability/composables.html).
+
+## 📂 config
+
+This folder contains configuration files. I put here the variables from .env file.
+It needs for using variables from one place in the application, but not importing them from the .env file every time.
+
+Let's see how it looks like:
+
+```ts
+export default {
+  api_url: `${import.meta.env.VITE_API || 'http://localhost:8000/v1'}`,
+  google_map_api_key: `${import.meta.env.VITE_GOOGLE_MAP_API_KEY || ''}`,
+} as {
+  api_url: string,
+  google_map_api_key: string,
+}
+```
+
+## 📂 layouts
+
+This folder contains layouts. Layouts are used for wrapping the content of the page.
+For example, we can have a layout for the admin panel and a layout for the public part of the application.
+
+## 📂 global
+
+Here I put global components, composables, and other files that can be used in different places in the application.
+In this file, I register global components from different libraries, etc.
+
+## 📂 i18n
+
+This folder contains localization files. I use the [vue-i18n](https://kazupon.github.io/vue-i18n/) library for localization.
+I put here localization files for different languages. I also put here the file with the configuration of the library.
+Let's see example for validation messages:
+
+```ts
+export const i18n = createI18n({
+  locale: 'ua',
+  messages: {
+    ua: {
+      validations: {
+        required: "Це поле обов'язкове",
+        requiredIf: "Це поле обов'язкове",
+        minLength: 'Мінімальна довжина {min} символів',
+        maxLength: 'Максимальна довжина {max} символів',
+        minValue: 'Мінімально допустиме значення становить {min}',
+        maxValue: 'Максимально дозволене значення {max}',
+        between: 'Значення має бути між {min} і {max}',
+        email: 'Значення має бути типу: ab@mail.com',
+        sameAs: 'Значення має бути ідентичним',
+        numeric: 'Значення має бути числовим',
+        alpha: 'Значення має бути алфавітному порядку',
+        integer: 'Значення має бути цілим числом',
+      },
+    },
+  },
+})
+```
+
+## 📂 numbers
+
+This folder contains files with `MAGIC_NUMBERS`. I use this file for storing magic numbers.
+For example, I can put here the size of WEEK, MONTH, YEAR, etc.
+
+## 📂 plugins
+
+This folder contains plugins, which we can use in templates later.
+
+```ts
+// log.ts
+const install = app => {
+  app.config.globalProperties.$log = (str: string) => {
+    console.log(str)
+  }
+}
+
+export { install as default };
+```
+
+This plugin adds a `$log` method to the global properties of the application. It can be used in templates like this:
+
+```html
+<template>
+  <div>
+    <button @click="$log('Hello world')">Click me</button>
+  </div>
+</template>
+```
+
+This method helps me to debug the application.
+
+In this folder we need put `index.ts` file, which will register all plugins:
+
+```ts
+
+export default app => {
+  app.use(log)
+}
+```
+
+## 📂 data
+
+There are files with data. For example, I can put here the file with the lists or enums.
+
+## 📂 tests
+
+This folder contains tests. I use the [Jest](https://jestjs.io/) library for testing.
+
+## 📂 types
+
+This folder contains globally typescript types. I put here typescript types for different libraries, etc.
+
+## 📂 utils
+
+This folder contains utility files.
+Let's see example:
+
+```ts
+export default axios.create({
+  baseURL: config.api_url,
+  headers: {
+    Authorization: 'Bearer ' + localStorage.getItem('access_token'),
+    Accept: 'application/json',
+    'Content-Type': 'application/json',
+    'Accept-Language': 'ru,en;q=0.5'
+  },
+})
+```
+
+This file contains the axios instance. I use this instance for making requests to the server.
+We use it in the api folder if you remember.
+
+## 📂 validation
+
+I use here global validation hook.
+Let's see example:
+
+```ts
+export default function useValidation(rules: object, state) {
+  const _rules = computed(() => rules)
+
+  const v$ = useValidate(_rules, state)
+
+  const isValid = async () => {
+    v$.value.$touch()
+    return !(await v$.value.$invalid)
+  }
+
+  return {
+    validation: v$,
+    isValid,
+  }
+}
+```
+
+## containers
+
+This folder contains containers. Containers are used for structuring the application.
+If you heard some about Domain Driven Design, you can think about containers as about domains.
+I use containers for grouping components, views, etc. by domains.
+
+Let's see example:
+
+```
+📂 project
+┣ 📂 api
+┣ 📂 components
+┣ 📂 functions
+┣ 📂 routes
+┣ 📂 services
+┣ 📂 types
+┗ 📂 views
+```
+
+Let's see each folder meaning:
+
+### 📂 api
+
+This folder contains declarations of the api `uris`. I put here the declaration of the api for the project.
+Let's see example:
+
+```ts
+export const paginate_projects = 'projects'
+
+export const select_address = (id: number | string) => `deals/${id}/addresses/select`
+
+export const create_displacement = (id: number | string) => `deals/${id}/displacement/draft`
+```
+
+It helps me to avoid hard coding `uris` in the project.
+
+### 📂 components
+
+This folder contains components. I put here components that are used only in this container.
+
+### 📂 functions
+
+This folder contains functions. I put here functions that are used only in this container.
+
+### 📂 routes
+
+This folder contains routes. I put here routes that are used only in this container.
+And later I use them in the global router file, which we will see later.
+
+### 📂 services
+
+In this folder, I put axios calls to the server. I use the axios instance from the utils folder.
+And declare types for the response from the server.
+Let's see example:
+
+```ts
+import {
+  cancel_shipping,
+} from '../api'
+
+import type { cancelShipping } from '../types'
+
+export const cancelShipping = async (id: number | string) => {
+  return await axios<LoadShipping>('post', cancel_shipping(id))
+}
+```
+
+Here I use only local types, which are declared in the `types` folder.
+
+## 📂 types
+
+This folder contains typescript types. I put here typescript types that are used only in this container.
+
+### 📂 views
+
+In this folder, I put components that are used in the routes.
+
+## 📂 router
+
+This folder contains the router file. I use the [vue-router](https://next.router.vuejs.org/) library for routing.
+
+Let's see example:
+
+```ts
+const routes = [
+  ...projects,
+  {
+    path: '/:pathMatch(.*)*',
+    name: 'not_found',
+    component: NotFound,
+    meta: {
+      layout: 'Empty',
+      requireAuth: false,
+      permission: null,
+      group: null,
+    },
+  },
+]
+
+const router = createRouter({
+  history: createWebHistory(),
+  routes,
+  scrollBehavior(to, from, savedPosition) {
+    return (
+      savedPosition || {
+        left: 0,
+        top: 0,
+      }
+    )
+  },
+})
+```
+
+In this part of the file, I declare routes, import routes from containers, and create the router.
+
+## store
+
+For store management, if you use JS you can use Vuex, but I use [Pinia](https://pinia.esm.dev/),
+because it is written in TypeScript and it is very easy to use.
+
+Let's see example:
+
+```ts
+export const useUserStore = defineStore('user', {
+  state: () => ({
+    user: {} as User,
+    auth: false,
+    access_token: null,
+    first_route: null,
+    first_route_params: {},
+    first_route_query: {},
+    first: true,
+    call_channel: null,
+  } as UserStore),
+  actions: {
+    async setToken(token) {
+      this.access_token = token
+    },
+    reset() {
+      this.user = {} as User;
+      this.access_token = null;
+      this.auth = false;
+    },
+    async update(data) {
+      this.user = data
+      this.call_channel = `call.${data.id}`
+      this.auth = true
+    },
+    can(permission) {
+      return this.user.permissions && Array.isArray(this.user.permissions) && this.user.permissions.includes(permission);
+    },
+    async setup(name, params, query) {
+      if (this.first) {
+        this.first_route = name
+        this.first_route_params = params
+        this.first_route_query = query
+
+        this.first = false
+
+        if (localStorage.getItem('access_token')) {
+          this.access_token = localStorage.getItem('access_token')
+          return true
+        } else {
+          return false
+        }
+      }
+    },
+    async logout() {
+      localStorage.removeItem('access_token');
+      this.reset();
+    },
+  },
+})
+```
+
+Here I declare the store, and declare actions, mutations, and state. I use the `defineStore` function from the Pinia library.
+
+## 📜 main.ts
+
+We need this file for creating the application. Here we import all the necessary libraries, create the application, and mount it to the DOM.
+If you remember plugins, we use them here.
+Let's see example:
+
+```ts
+
+const pinia =  createPinia()
+const app =  createApp(App)
+
+app.directive('click-outside', clickOutside)
+
+Sentry.init({
+app,
+dsn: 'xxxx-xxxx',
+integrations: [
+  new BrowserTracing({
+    routingInstrumentation: Sentry.vueRouterInstrumentation(router),
+    tracePropagationTargets: ['localhost', 'xxxx.com', /^\//],
+  }),
+],
+})
+
+app.use(router)
+app.use(pinia)
+app.use(global)
+
+await router.isReady()
+
+await plugins(app)
+
+app.mount('#app')
+```
+
+Here we create the application, import the router, store, and global plugin, and mount the application to the DOM.
+Now we end with the project structure.
+
+Let's see how to create a different hard thing in the project.
+
+## Managing the layouts
+
+In every big project, we have different layouts.
+For example, we have a layout for the login page, and we have a layout for the main page.
+And we need to manage them. For this, we have a `layouts` folder. There we locate all the layouts.
+But how to manage them? Let's see.
+
+1. First, we need to create a layout. Let's see example:
+
+```html
+<template>
+  <div>
+    <slot></slot>
+  </div>
+</template>
+
+<script>
+export default {
+  name: 'EmptyLayout',
+}
+</script>
+
+<style scoped></style>
+
+```
+
+This is a simple layout. We have a slot, and we can put there any component. You can add more different things to the layout, but I think you understand the idea.
+
+2. Now we need to add this layout to meta in the router file. Let's see example:
+
+```
+{
+    path: '/login',
+    name: 'login',
+    component: LoginPage,
+    meta: {
+      layout: 'Empty'
+    }
+}
+```
+
+and add other layouts to the meta in the other route
+
+```
+{
+    path: '/counterparties',
+    name: 'counterparties',
+    component: CounterpartiesView,
+    meta: {
+      layout: 'Side'
+    },
+},
+```
+
+3. Now we need to add switcher in the `App.vue` file. Let's see example:
+
+```html
+<template>
+    <component :is="layout">
+      <router-view></router-view>
+    </component>
+</template>
+
+<script lang="ts">
+import SideLayout from './layouts/SideLayout.vue'
+import EmptyLayout from './layouts/EmptyLayout.vue'
+export default {
+  components: {
+    SideLayout,
+    EmptyLayout
+  },
+  setup(){
+
+  },
+  computed: {
+    layout() {
+      return `${this.$route.meta.layout}Layout`
+    },
+  }
+}
+</script>
+```
+
+Here we import all the layouts, and create a switcher. We use the `:is` attribute for switching the layout.
+We need to declare layouts as components in the `components` section.
+Also create a computed property for switching the layout by meta in the router.
+As for me, it is a basic way to manage layouts.
+
+## Authorization and managing permissions
+
+It is a very important part of the project. We need to manage permissions.
+Also, I will explain how to manage authorization in the project.
+
+1. We need to declare permissions in the `permissions.ts` file. You can do it in `data` folder:
+
+2. Firstly, we need to separate routes by required for authorization.
+
+As you now we have `/login` route. We need to separate it from other routes. Let's see example:
+
+```
+{
+    path: '/login',
+    name: 'login',
+    component: LoginPage,
+    meta: {
+        requireAuth: true
+    },
+},
+{
+    path: '/counterparties',
+    name: 'counterparties',
+    component: CounterpartiesView,
+    meta: {
+        requireAuth: true,
+        permission: 'project.get',
+    },
+}
+```
+
+Here we have two routes. One of them is `/login` and the second is `/counterparties`. We need to separate them by `requireAuth` meta.
+If we have `requireAuth: true` we need to check the user's auth. If we have `requireAuth: false` we don't need to check the user's token.
+Also, for each required auth route, we need to check the user's permissions. That understand if user can go to the route or not.
+You ask me how to check the user's auth? Let's see.
+
+3. Middleware `beforeEach` in the router file.
+
+We need to create a middleware for checking the user's auth. Let's see example:
+
+```ts
+beforeEach(async (to, from, next) => {
+  if (to.meta.requireAuth) {
+      // check the user's auth
+  } else {
+    return next()
+  }
+})
+```
+
+Here we check the user's auth. If we have `requireAuth: true` we need to check the user's auth, else we let the user go to the route.
+
+4. Checking the user's auth.
+
+If you remember we have REST API application. So we need to send a request with token from `localStore` to the server for checking the user's auth.
+But we need to do it once when the user goes to the application, after that we need to remember the user's auth.
+So we need to create a store for managing the user's auth. Let's see example:
+
+```ts
+export const useUserStore = defineStore('user', {
+  state: () => ({
+    user: {} as User,
+    auth: false,
+  }),
+  actions: {
+    async setToken(token) {
+      this.access_token = token
+    },
+    can(permission) {
+      return this.user.permissions.includes(permission);
+    },
+    async update(data) {
+      this.user = data
+      this.auth = true
+    },
+  },
+})
+```
+
+Here we create a store for managing the user's auth. We have two actions. The first is for setting the token, and the second is for updating the user's data.
+We need to create a request for checking the user's auth. Let's update the `beforeEach` middleware:
+
+```ts
+router.beforeEach(async (to, from, next) => {
+  const userStore = useUserStore()
+
+  if (!userStore.auth && to.meta.requireAuth) {
+
+    try {
+
+      const response = await axios({
+        method: 'get',
+        url: `${config.api_url}profile`,
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer ' + localStorage.getItem('access_token'),
+        },
+      })
+
+
+      await userStore.update(response.data)
+
+      if (userStore.can(to.meta.permission)) {
+
+        return next()
+      }
+
+      return next('login')
+    } catch (error) {
+
+      return next('login')
+    }
+  } else if (userStore.auth && to.meta.requireAuth) {
+
+    if (userStore.can(to.meta.permission)) {
+
+      return next()
+    }
+
+    return next('login')
+  } else if (!to.meta.requireAuth) {
+
+    return next()
+  } else {
+
+    return next('login')
+  }
+})
+```
+
+So, here we have 3 cases.
+
+The first is when the user goes to the route with `requireAuth: true` meta and the user's auth is false.
+In this case, we need to send a request to the server for checking the user's auth.
+If the `localStore` token is valid, we need to update the user's data in the store and
+check if the user has permission to go to the route. If the user has permission, we let the user go to the route, else we redirect the user to the login page.
+
+The second is when the user goes to the route with `requireAuth: true` meta and the user's auth is true. So we
+understand that if the user's auth is true, the user had already been checked. So we need only to check if the user has permission to go to the route.
+
+The third is when the user goes to the route with `requireAuth: false` meta. In this case, we don't need to check the user's auth.
+
+In this example, I simplified the code, but you can see the main idea.
+
+
+
+## Navigation
+
+We need to create a navigation for the application. If you remember, we have a `SideLayout` component. We need to create a navigation in this component.
+As you know, we have a different permission for each route. So we need to create a navigation based on the user's permissions.
+Let's go to develop navigation.
+
+1. Firstly, we need to create a navigation in the `SideLayout` component. Let's see example:
+
+```html
+<template>
+  <div class="side-layout">
+    <div class="side-layout__navigation">
+      <div class="side-layout__navigation-item" v-for="item in navigation" :key="item.name">
+        <router-link :to="item.path" class="side-layout__navigation-link">
+          <div class="side-layout__navigation-icon">
+            <i :class="item.icon"></i>
+          </div>
+          <div class="side-layout__navigation-title">
+            {{ item.title }}
+          </div>
+        </router-link>
+      </div>
+    </div>
+    <div class="side-layout__content">
+      <router-view></router-view>
+    </div>
+  </div>
+</template>
+
+<script lang="ts">
+import { defineComponent } from 'vue'
+import { useNavigation } from '@/hooks/useNavigation'
+
+export default defineComponent({
+  name: 'SideLayout',
+  setup() {
+    const { navigation } = useNavigation()
+
+    return {
+      navigation,
+    }
+  },
+})
+</script>
+```
+
+
+Here we have a navigation. We use `useNavigation` hook for getting navigation data.
+
+2. Next step is to create a list of navigation items.
+
+Let's see example:
+
+```
+{
+    name: 'Projects',
+    path: { name: 'projects' },
+    icon: 'TableIcon',
+    current: false,
+    permission: PERMISSIONS_PROJECT_GET
+  },
+  {
+    name: 'Deals',
+    path: { name: 'deals' },
+    icon: 'TableIcon',
+    current: false,
+    permission: PERMISSIONS_DEAL_GET,
+  }
+```
+
+Here we have a list of navigation items. We have a name, href, icon, current, group, and permission.
+
+3. Next step is to create a function for getting navigation items based on the user's permissions.
+
+If you remember we created `useNavigation` hook. Let's see example:
+
+```ts
+export default function () {
+  const store = useUserStore()
+
+  const navigation = ref([])
+
+  onMounted(async () => {
+    navigation.value = navigation_data.filter(e => {
+      if (e.permission) {
+        return store.can(e.permission)
+      }
+      return true
+    })
+  })
+
+  return { navigation }
+}
+```
+
+Here we have a function for getting navigation items based on the user's permissions. We use `useUserStore` for getting the user's permissions.
+If navigation item has permission, we check if the user has this permission. If the user has this permission, we add this navigation item to the navigation list.
+
+Let's make our navigation dynamic. We need to add `current` property to the navigation item. This property will be used for highlighting the current navigation item.
+
+We need to highlight the current navigation item based on the current route.
+And automatically highlight the current navigation item when the user goes to another route or refreshes the page.
+
+4. Create a function for highlighting the current navigation item.
+
+Update `useNavigation` hook:
+
+```ts
+
+export default function () {
+  const route = useRoute()
+  const router = useRouter()
+  const store = useUserStore()
+
+  const navigation = ref([])
+
+  onMounted(async () => {
+    isReady.value = false
+    navigation.value = navigation_data.filter(item => {
+      if (item.permission) {
+        return store.can(item.permission)
+      }
+      return true
+    })
+    findActive(route.path.name)
+  })
+
+  const findActive = (name: string) => {
+    navigation.value.forEach(item => {
+      if (item.path.name == name) {
+        item.current = true
+        return
+      }
+    })
+  }
+
+  const linkTo = (path) => {
+    navigation.value.forEach(item => {
+      item.current = false
+    })
+    findActive(path.name)
+    router.push(path)
+  }
+
+  return { navigation, findActive, linkTo }
+}
+```
+
+Here we have a function for highlighting the current navigation item.
+
+When the user first goes to the page, or refreshes the page, `onMounted` hook will be called, and we will call `findActive` function,
+which will highlight the current navigation item based on the current route.
+
+Second case, when the user goes to another route using navigation, we will call `linkTo` function, which will highlight the current navigation item based on the current route.
+
+Update `SideLayout` component:
+
+```html
+<template>
+  <div class="side-layout">
+    <div class="side-layout__navigation">
+      <div class="side-layout__navigation-item" v-for="item in navigation" :key="item.name">
+        <div @click="linkTo(item.href)" :class="[item.current ? 'highlight' : '', 'side-layout__navigation-link']">
+          <div class="side-layout__navigation-icon">
+            <i :class="item.icon"></i>
+          </div>
+          <div class="side-layout__navigation-title">
+            {{ item.title }}
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="side-layout__content">
+      <router-view></router-view>
+    </div>
+  </div>
+</template>
+
+<script lang="ts">
+import { defineComponent } from 'vue'
+import { useNavigation } from '@/hooks/useNavigation'
+
+export default defineComponent({
+  name: 'SideLayout',
+  setup() {
+    const { navigation, linkTo } = useNavigation()
+
+    return {
+      navigation, linkTo
+    }
+  },
+})
+</script>
+```
+
+Here we have a navigation. We use `useNavigation` hook for getting navigation data. And we use `linkTo` function for highlighting the current navigation item based on the current route.
+
+It is simplified code. You can add more functionality to the navigation. For example, you can add a group to the navigation item. And you can create a dropdown menu for the navigation item.
+In my project with 3-level navigation, I used this concept, but I added more functionality to the navigation. You can try in your project.
+
+## Add toasts
+
+When we create a new project, we need to add toasts.
+For example, when the user creates a new project, we need to show toast with a message that the project was created successfully.
+Or when the user deletes a project, we need to show toast with a message that the project was deleted successfully.
+In some cases, we need to show different types of toasts. For example, success, error, warning, etc.
+
+Let's create a toast component.
+
+1. Create a `Toast` component.
+
+```html
+<script setup lang="ts">
+import { CircleInfoIcon, CloseMdIcon, CircleCheckIcon, CircleWarningIcon } from '@devheniik/icons'
+import { computed } from 'vue'
+import type { FunctionalComponent, HTMLAttributes, VNodeProps } from 'vue'
+
+const props = withDefaults(
+  defineProps<{
+    variant?: 'primary' | 'success' | 'warning' | 'danger'
+    text: string
+  }>(),
+  {
+    variant: 'primary',
+    text: '',
+  }
+)
+
+interface Emits {
+  (e: 'close'): void
+  (e: 'shown'): void
+}
+
+const emit = defineEmits<Emits>()
+
+const close = () => {
+  emit('close')
+}
+
+emit('shown')
+
+const icon = computed<FunctionalComponent<HTMLAttributes & VNodeProps> | string>(() => {
+  let icon = CircleInfoIcon
+
+  switch (props.variant) {
+    case 'primary':
+      icon = CircleInfoIcon
+      break
+    case 'success':
+      icon = CircleCheckIcon
+      break
+    case 'warning':
+      icon = CircleWarningIcon
+      break
+    case 'danger':
+      icon = CircleWarningIcon
+      break
+  }
+
+  return icon
+})
+</script>
+
+<template>
+  <div class="v-alert v-toast">
+    <div :class="['v-alert__left-border', `bg-${variant}-medium`]"></div>
+    <slot name="icon">
+      <component :is="icon" :class="['v-alert__icon', `v-text_${variant}_medium`]" />
+    </slot>
+    <main class="v-alert__main">
+      <p class="v-alert__text">{{ text }}</p>
+    </main>
+    <button :class="['v-alert__close_flat', 'v-alert__close']" @click="close">
+      <CloseMdIcon class="v-alert__close-icon" />
+    </button>
+  </div>
+</template>
+
+<style lang="scss" scoped>
+@import '../../assets/themes/main/components/alert.scss';
+</style>
+```
+
+This is a component from my own library. You can use your own component or use a component from a third-party library.
+
+So, now we need to manage toasts, which rotes has been shown, which waits for showing, etc.
+Best way to do this is to use Pinia or Vuex.
+
+2. Create a store module for managing toasts.
+
+```html
+import { defineStore } from 'pinia'
+import uuid from '../../functions/uuid'
+
+const useToastStore = defineStore('toast', {
+  state: () => ({
+    list: [],
+  }),
+  actions: {
+    createToast(variant: string, text: string) {
+      this.list.push({
+        uuid: uuid(),
+        component: 'v-toast',
+        show: true,
+        data: {
+          variant,
+          text,
+        },
+      })
+    },
+    deleteToast(uuid) {
+      this.list = this.list.filter(n => n.uuid !== uuid)
+    },
+  },
+})
+
+export default useToastStore
+```
+
+Here we have a store module for managing toasts. We have two actions: `createToast` and `deleteToast`.
+`createToast` action creates a new toast and adds it to the list.
+`deleteToast` action deletes toast from the list. We use `uuid` for identifying toasts.
+
+3. Create a `ToastLayout` component.
+
+```html
+<template>
+  <div class="fixed mt-10 top-0 right-0 w-auto flex flex-col pt-3 pr-3 items-center space-y-4 sm:items-end z-[99999999999999999999]">
+    <component
+      :is="notification.component"
+      v-for="(notification, i) in notifications"
+      :key="i"
+      class="z-50"
+      v-bind="notification.data"
+      @shown="handleLoad(notification.uuid)"
+      @close="del(notification.uuid)" />
+  </div>
+</template>
+
+<script lang="ts">
+import useToastStore from '../store/modules/toast'
+import { computed } from 'vue'
+import { VToast } from 'vuesty'
+export default {
+  name: 'NotificationLayout',
+  components: {
+    VToast,
+  },
+  setup() {
+    const store = useToastStore()
+
+    const handleLoad = uuid => {
+      setTimeout(() => {
+        store.deleteToast(uuid)
+      }, 5000)
+    }
+
+    return {
+      notifications: computed(() => store.list),
+      del: uuid => store.deleteToast(uuid),
+      handleLoad,
+    }
+  },
+}
+</script>
+
+<style lang="scss" scoped></style>
+```
+
+Here we have a `ToastLayout` component. We use `useToastStore` for getting toasts. And we use `VToast` component for showing toasts.
+We can use `VToast` component because we use `component` property in the toast object. And we use `data` property for passing props to the toast component.
+You can change component, but you need to declare them in the `components` property.
+
+`handleLoad` function is used for deleting toasts after 5 seconds.
+`del` function is used for deleting toasts immediately.
+
+4. Add `ToastLayout` component to the `App` component.
+
+```html
+<template>
+    <component :is="layout">
+      <router-view></router-view>
+    </component>
+    <toast-layout></toast-layout>
+</template>
+
+<script lang="ts">
+import SideLayout from './layouts/SideLayout.vue'
+import EmptyLayout from './layouts/EmptyLayout.vue'
+import ToastLayout from './layouts/ToastLayout.vue'
+export default {
+  components: {
+    SideLayout,
+    EmptyLayout,
+    ToastLayout,
+  },
+  setup(){
+
+  },
+  computed: {
+    layout() {
+      return `${this.$route.meta.layout}Layout`
+    },
+  }
+}
+</script>
+```
+
+Now we can use `createToast` action in any component to create and show toasts.
+
+For example, after getting `201` status code from the server we can show toast with a success message in `api/index.ts`.
+
+
+```ts
+export default async function <T>(method: string, route: string, req: any = {}, showToast: boolean = true, customMessage: string = '', customError: string = '', passError: boolean = true) {
+  const { createToast } = useToastStore()
+  try {
+    const response = await axios[method]<Response<T>>(route, req)
+
+    if (response.status === 201 && customMessage) {
+      createToast('success', customMessage)
+    }
+
+    return response.data
+  } catch (error) {
+    if (error.response?.status == 401) {
+      createToast('danger', 'Authorization error')
+    }
+  }
+}
+```
+
+## Validation
+
+This is one of the most routine tasks in the development of any application.
+And we need to make it as simple as possible for developing, but right for using as user.
+
+For this, we will use [vuelidate](https://vuelidate-next.netlify.app/).
+
+1. Install `vuelidate` and `@vuelidate/validators`.
+
+We can use it already after installing. But I want to create some code sugar for using it.
+
+2. Create wrapper for `vuelidate`.
+
+```ts
+import { computed } from 'vue'
+import useValidate from '@vuelidate/core'
+
+export default function useValidation(rules: object, state) {
+  const _rules = computed(() => rules)
+
+  const v$ = useValidate(_rules, state)
+
+  const isValid = async () => {
+    v$.value.$touch()
+    return !(await v$.value.$invalid)
+  }
+
+  return {
+    validation: v$,
+    isValid,
+  }
+}
+```
+
+You saw it bow. Here we get rules wrap it in `computed` and pass to `useValidate` function.
+Also, here we have `isValid` function. It is used for checking validation. It returns `true` if validation is passed and `false` if not.
+
+3. Localize validation messages.
+
+In my project, I use localization. And I want to localize validation messages.
+
+For this, we need to create a `validation.js` file in the `functions` folder.
+
+```js
+import * as validators from '@vuelidate/validators'
+import { i18n } from '../i18n'
+
+const { createI18nMessage } = validators
+
+const withI18nMessage = createI18nMessage({ t: i18n.global.t.bind(i18n) })
+
+export const required = withI18nMessage(validators.required)
+export const requiredIf = withI18nMessage(validators.requiredIf, { withArguments: true })
+export const minLength = withI18nMessage(validators.minLength, { withArguments: true })
+export const maxLength = withI18nMessage(validators.maxLength, { withArguments: true })
+export const minValue = withI18nMessage(validators.minValue, { withArguments: true })
+export const maxValue = withI18nMessage(validators.maxValue, { withArguments: true })
+export const between = withI18nMessage(validators.between, { withArguments: true })
+export const sameAs = withI18nMessage(validators.sameAs, { withArguments: true })
+export const email = withI18nMessage(validators.email)
+export const numeric = withI18nMessage(validators.numeric)
+export const alpha = withI18nMessage(validators.alpha)
+export const helpers = validators.helpers
+export const integer = withI18nMessage(validators.integer)
+```
+
+Bow you saw that we use `i18n` for localization. And we use `createI18nMessage` function for creating localized messages.
+I will not sow this again, but we will use it in the `validation` object.
+
+4. Use in the component.
+
+Below you can see an example of using validation in the elementary component, for entity with one required field.
+
+```html
+<template>
+  <div>
+    <div class="flex flex-col space-y-3">
+      <form-wrap label="Назва" :trigger="validation.title">
+        <v-input v-model="data.title" placeholder="Manager" @input="resetServerError"></v-input>
+      </form-wrap>
+      <form-wrap>
+        <v-checkbox v-model="data.is_driver" label="Driver"></v-checkbox>
+      </form-wrap>
+    </div>
+  </div>
+  <footer class="modal__footer">
+    <v-button  color="light" class="grow" @click="$emit('cancel')" >Create</v-button>
+    <v-button class="grow" @click="handleSave">{{ edit ? 'Update' : 'Create' }}</v-button>
+  </footer>
+</template>
+
+<script setup lang="ts">
+import { reactive } from 'vue'
+import FormWrap from '../../../components/forms/FormWrap.vue'
+import { VInput, VButton, VCheckbox} from 'vuesty'
+import useValidation from '../../../validation'
+import { maxLength, required, minLength } from '../../../validation/validators.js'
+import { Job } from '../types'
+import { cloneDeep } from 'lodash'
+
+const props = withDefaults(
+  defineProps<{
+    job: Job
+    edit?: boolean
+  }>(),
+  {
+    edit: false,
+  }
+)
+
+interface Emits {
+  (e: 'save', value: Job): void
+  (e: 'cancel'): void
+  (e: 'update:errors', value: any): void
+}
+const emit = defineEmits<Emits>()
+
+const data = reactive<Job>(cloneDeep(props.job))
+
+const resetServerError = () => {
+  emit('update:errors', '')
+}
+
+const { validation, isValid } = useValidation(
+  {
+    title: { required, maxLength: maxLength(255), minLength: minLength(2) },
+  },
+  data
+)
+
+const handleSave = async () => {
+  if (await isValid()) {
+    emit('save', data)
+  }
+}
+</script>
+
+<style scoped></style>
+```
+
+Here we use `useValidation` function for creating a validation object. And we pass it to `v-input` component.
+And after that, we use `isValid` function for checking validation. If validation is passed we emit `save` event.
+
+## CRUD operations
+
+We can create a simple component, we need to fill Job entity with data.
+As you now almost Entities can be created and updated. And we need to create 2 components for this.
+And usually we need to change some of these created and updated components. And we need to make it twice. It is not good.
+
+For this case, I propose to you to create a Wrapper components for creating and updating.
+First time you can think that it is not good, because we need to create 3 components instead of 2.
+But if you will use it in the future you will see that it is a good idea.
+
+1. Create `CreateJob.vue` and `UpdateJob.vue` components.
+
+```html
+<template>
+  <CRUDJob :job="job" @save="handleSaveEmit" @cancel="$emit('cancel')"/>
+</template>
+
+<script setup lang="ts">
+import { createJob } from '../services'
+
+import CRUDJob from './CRUDJob.vue'
+import { Job } from '../types'
+import { reactive, ref } from 'vue'
+import {handleServerErrors} from '../../../utils/getServerResponseErrors'
+
+const job = reactive<Job>({
+  title: '',
+  is_driver: false,
+})
+
+const errors = ref({})
+
+const emit = defineEmits<{
+  (e: 'save'): void
+  (e: 'cancel'): void
+}>()
+
+const handleSaveEmit = async(value) => {
+  const serverErrors = await handleServerErrors(createJob, value)
+  if(serverErrors) {
+    errors.value = serverErrors
+  }
+  else {
+    emit('save')
+  }
+}
+</script>
+
+<style scoped></style>
+```
+
+```html
+<template>
+  <CRUDJob :job="job" edit @save="handleSaveEmit" @cancel="$emit('cancel')" />
+</template>
+
+<script setup lang="ts">
+import { cloneDeep } from 'lodash'
+import { ref } from 'vue'
+import { updateJob } from '../services'
+import { Job } from '../types'
+import CRUDJob from './CRUDJob.vue'
+import {handleServerErrors} from '../../../utils/getServerResponseErrors'
+
+const props = withDefaults(
+  defineProps<{
+    data: Job
+  }>(),
+  {}
+)
+
+
+const emit = defineEmits<{
+  (e: 'update'): void
+  (e: 'cancel'): void
+}>()
+
+const job = ref(cloneDeep(props.data))
+const errors = ref({})
+
+const handleSaveEmit = async(value) => {
+  const serverErrors = await handleServerErrors(updateJob, value)
+  if(serverErrors) {
+    errors.value = serverErrors
+  }
+  else {
+    emit('update')
+  }
+}
+</script>
+
+<style scoped></style>
+```
+
+There are 2 components. They are almost the same. But in the first component, we create a new entity.
+And in the second component, we update an existing entity. And we use `edit` prop for this.
+In both components, we use `CRUDJob` component. And we pass `job` and `errors` to it.
+
+
+2. Create `CRUDJob.vue` component.
+
+
+```html
+<template>
+  <div>
+    <div class="flex flex-col space-y-3">
+      <form-wrap label="Назва" :trigger="validation.title">
+        <v-input v-model="data.title" placeholder="Manager" @input="resetServerError"></v-input>
+      </form-wrap>
+      <form-wrap>
+        <v-checkbox v-model="data.is_driver" label="Driver"></v-checkbox>
+      </form-wrap>
+    </div>
+  </div>
+  <footer class="modal__footer">
+    <v-button  color="light" class="grow" @click="$emit('cancel')" >Create</v-button>
+    <v-button class="grow" @click="handleSave">{{ edit ? 'Update' : 'Create' }}</v-button>
+  </footer>
+</template>
+
+<script setup lang="ts">
+import { reactive } from 'vue'
+import FormWrap from '../../../components/forms/FormWrap.vue'
+import { VInput, VButton, VCheckbox} from 'vuesty'
+import useValidation from '../../../validation'
+import { maxLength, required, minLength } from '../../../validation/validators.js'
+import { Job } from '../types'
+import { cloneDeep } from 'lodash'
+
+const props = withDefaults(
+  defineProps<{
+    job: Job
+    edit?: boolean
+  }>(),
+  {
+    edit: false,
+  }
+)
+
+interface Emits {
+  (e: 'save', value: Job): void
+  (e: 'cancel'): void
+  (e: 'update:errors', value: any): void
+}
+const emit = defineEmits<Emits>()
+
+const data = reactive<Job>(cloneDeep(props.job))
+
+const resetServerError = () => {
+  emit('update:errors', '')
+}
+
+const { validation, isValid } = useValidation(
+  {
+    title: { required, maxLength: maxLength(255), minLength: minLength(2) },
+  },
+  data
+)
+
+const handleSave = async () => {
+  if (await isValid()) {
+    emit('save', data)
+  }
+}
+</script>
+
+<style scoped></style>
+```
+
+You saw this component before. And now when we need to change something in this component, we need to change it only once.
+And we can use it in `CreateJob.vue` and `UpdateJob.vue` components.
+
+## Conclusion
+
+In summary, when building large Vue.js applications with many components, it is important to structure the project properly. A clean project structure with separation of concerns makes the codebase easy to navigate and maintain. Some key points are:
+
+- Organize code into domains/features using a container structure. This groups related components, services, etc together.
+- Manage layouts by creating layout components and switching them based on route metadata. This allows flexible layouts.
+- Handle authorization and permissions in router guards by checking meta data and user permissions. Store auth state in Pinia/Vuex.
+- Build reusable components for common UI elements. Use a global components folder to make them available everywhere.
+- Abstract API calls into reusable services using proper typing.
+- Use Pinia/Vuex to manage global state like auth, notifications, etc.
+- Leverage composables for reusable logic.
+- Create wrapper CRUD components for consistent create/update UIs.
+
+Following these patterns allows the application to scale while keeping a maintainable structure. The overall goal is to build robust, reusable code that remains organized as the app grows in size and complexity. Proper planning and structure makes developing complex Vue.js applications much easier.
+
+
+
