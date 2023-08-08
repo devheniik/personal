@@ -979,21 +979,6 @@ class DealQueryBuilder extends Builder
         });
     }
 
-    public function period(string $start_at, string $end_at): self
-    {
-        return $this->where(fn ($query) => $query
-            ->where(fn ($query) => $query
-                ->whereDate('start_at', '<', $start_at)
-                ->whereDate('end_at', '>', $start_at))
-            ->orWhere(fn ($query) => $query
-                ->whereDate('start_at', '<', $end_at)
-                ->whereDate('end_at', '>', $end_at))
-            ->orWhere(fn ($query) => $query
-                ->whereDate('start_at', '>', $start_at)
-                ->whereDate('end_at', '<', $end_at))
-        );
-    }
-
     public function user(User $user): self
     {
         return $this->whereHas('users', function ($query) use ($user) {
